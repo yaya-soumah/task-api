@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Task List</title>
+</head>
+<body>
+<h1>Task Manager</h1>
+<h2>Add Task</h2>
+<form method="post">
+    {% csrf_token %}
+    <label>Type:</label>
+    <select name="task_type" id="task_type">
+        <option value="urgent">Urgent</option>
+        <option value="regular">Regular</option>
+    </select><br>
+    <label>Title:</label>
+    <input type="text" name="title" required><br>
+    <label>Priority (1-5):</label>
+    <input type="number" name="priority" min="1" max="5" value="1"><br>
+    <label>Deadline (Urgent) or Notes (Regular):</label><br>
+    <input type="text" name="deadline" id="deadline">
+    <input type="text" name="notes" id="notes" style="display: none;">
+    <br><button type="submit">Add Task</button>
+</form>
+
+<h2>Urgent Tasks</h2>
+<ul>
+    {% for task in urgent_tasks %}
+        <li>{{ task }} <a href="{% url 'delete_task' 'urgent' task.id %}">Delete</a></li>
+    {% empty %}
+    <li>No urgent tasks.</li>
+    {% endfor %}
+</ul>
+
+<h2>Regular Tasks</h2>
+<ul>
+    {% for task in regular_tasks %}
+    <li>{{ task }} <a href="{% url 'delete_task' 'regular' task.id %}">Delete</a></li>
+    {% empty %}
+    <li>No regular tasks.</li>
+    {% endfor %}
+</ul>
+
+<script>
+    function toggleFields() {
+        let task_type = document.getElementById('task_type').value;
+        let deadline = document.getElementById('deadline');
+        let notes = document.getElementById('notes');
+        if (task_type === 'urgent') {
+            deadline.style.display = 'block';
+            notes.style.display = 'none';
+        } else {
+            deadline.style.display = 'none';
+            notes.style.display = 'block';
+        }
+    }
+    document.getElementById('task_type').addEventListener('change', toggleFields);
+    toggleFields();  // Run on load
+</script>
+</body>
+</html>
