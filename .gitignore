@@ -1,4 +1,4 @@
 django_env/
 __pycache__/
 db.sqlite3
-
+my_notes.md

@@ -1,50 +1,26 @@
-from django.db.models.fields import CharField
-from django.utils import timezone
-
-from django.db import models
-from django.core.validators import MinValueValidator,MaxValueValidator
 from django.contrib.auth.models import User
+from django.core.validators import MinValueValidator, MaxValueValidator
+from django.db import models
 
 
-class Tag(models.Model):
-    name = models.CharField(max_length=50, unique=True)
-    def __str__(self):
-        return self.name
-
-
-class Project(models.Model):
-    name = models.CharField(max_length=100)
-    user = models.ForeignKey(User, on_delete=models.CASCADE, db_index=True)
-    created_at = models.DateTimeField(auto_now_add=True)
-
-    def __str__(self):
-        return f"Project: {self.name}"
-
-    def get_progress(self):
-        tasks = UrgentTask.objects.filter(project=self)
-        if not tasks:
-            return 0
-        completed = sum(1 for t in tasks if  t.taskstatus.completed)
-        return (completed / len(tasks)) * 100
-
-# Create your models here.
 class Task(models.Model):
     title = models.CharField(max_length=100, db_index=True)
-    priority = models.IntegerField(default=1, validators=[MinValueValidator(1),MaxValueValidator(5)], db_index=True)
-    user=models.ForeignKey(User,on_delete=models.CASCADE, default=1, db_index=True)
-    tags = models.ManyToManyField(Tag, blank=True)
-    project = models.ForeignKey(Project, on_delete=models.SET_NULL, null=True, blank=True, db_index=True)
+    priority = models.IntegerField(default=1, validators=[MinValueValidator(1), MaxValueValidator(5)])
+    user = models.ForeignKey(User, on_delete=models.CASCADE, db_index=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    project = models.ForeignKey('Project', on_delete=models.SET_NULL, null=True, blank=True)
+    tags = models.ManyToManyField('Tag', blank=True)
 
     def __str__(self):
         return f"{self.title} (Priority: {self.priority})"
 
     class Meta:
-        abstract = True
+        indexes = [models.Index(fields=['priority'])]
 
 class UrgentTask(Task):
-    # deadline = models.CharField(max_length=50)
-    dependencies = models.ManyToManyField('self', symmetrical=False, blank=True)
-    parent = models.ForeignKey('self', on_delete=models.SET_NULL, null=True, blank=True, related_name='subtasks')
+    parent = models.ForeignKey('self', on_delete=models.SET_NULL, null=True, blank=True, related_name='children')
+    dependencies = models.ManyToManyField('self', symmetrical=False, blank=True, related_name='dependencies_list')
+    subtasks = models.ManyToManyField('self', symmetrical=False, blank=True, related_name='parent_tasks')
     depth = models.IntegerField(default=0)
 
     def save(self, *args, **kwargs):
@@ -55,57 +31,67 @@ class UrgentTask(Task):
         super().save(*args, **kwargs)
 
     def __str__(self):
-        return f"{self.title} (Priority: {self.priority}, Deadline: {self.deadline})"
-
-    class Meta:
-        indexes = [
-            models.Index(fields=['user','priority'], name='user_priority_idx'),
-        ]
-
-class TaskStatus(models.Model):
-    task = models.OneToOneField(UrgentTask, on_delete=models.CASCADE, primary_key=True)
-    completed = models.BooleanField(default=False)
-    updated_at = models.DateTimeField(auto_now=True)
-
-class TaskComment(models.Model):
-    task = models.ForeignKey(UrgentTask, on_delete=models.CASCADE, related_name='comments')
-    user = models.ForeignKey(User, on_delete=models.CASCADE)
-    text = models.TextField()
-    created_at = models.DateTimeField(auto_now_add=True)
-
-    class Meta:
-        indexes = [models.Index(fields=['task','created_at'])]
+        return f"{self.title} (Priority: {self.priority})"
 
 class RegularTask(Task):
-    notes = models.TextField()
+    notes = models.TextField(blank=True, null=True)
 
     def __str__(self):
         return f"{self.title} (Priority: {self.priority}, Notes: {self.notes})"
 
+class Tag(models.Model):
+    name = models.CharField(max_length=50, unique=True)
+
+    def __str__(self):
+        return self.name
+
+class TaskStatus(models.Model):
+    task = models.OneToOneField(Task, on_delete=models.CASCADE, related_name='status')  # Changed to OneToOne
+    completed = models.BooleanField(default=False)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    def __str__(self):
+        return f"Status for {self.task}: {'Completed' if self.completed else 'Pending'}"
 
 class Deadline(models.Model):
-    date = models.DateTimeField(default=timezone.now)
-    task = models.OneToOneField(UrgentTask, on_delete=models.CASCADE, primary_key=True)
+    task = models.OneToOneField(Task, on_delete=models.CASCADE, related_name='deadline')  # OneToOne for clarity
+    date = models.DateTimeField()
 
     def __str__(self):
         return f"Due: {self.date}"
 
+class Project(models.Model):
+    name = models.CharField(max_length=100)
+    user = models.ForeignKey(User, on_delete=models.CASCADE)
+
+    def __str__(self):
+        return f"Project: {self.name}"
+
+    def get_progress(self):
+        tasks = UrgentTask.objects.filter(project=self)
+        if not tasks:
+            return 0
+        completed = sum(1 for t in tasks if t.status.completed)  # Updated related_name
+        return (completed / len(tasks)) * 100
 
 class TaskAssignment(models.Model):
-    task = models.ForeignKey(UrgentTask, on_delete=models.CASCADE, related_name='assignments')
+    task = models.ForeignKey(Task, on_delete=models.CASCADE, related_name='assignments')
     user = models.ForeignKey(User, on_delete=models.CASCADE)
-    role = models.CharField(max_length=20, choices=[('owner','Owner'),('reviewer','Reviewer')], default='owner')
+    role = models.CharField(max_length=20, choices=[('owner', 'Owner'), ('reviewer', 'Reviewer')], default='owner')
 
     class Meta:
-        unique_together = ('task','user')
-        indexes= [models.Index(fields=['task','user'])]
+        unique_together = ('task', 'user')
+        indexes = [models.Index(fields=['task', 'user'])]
+
+class TaskComment(models.Model):
+    task = models.ForeignKey(Task, on_delete=models.CASCADE, related_name='comments')
+    user = models.ForeignKey(User, on_delete=models.CASCADE)
+    text = models.TextField()
+    created_at = models.DateTimeField(auto_now_add=True)
 
 class TaskPriorityHistory(models.Model):
-    task = models.ForeignKey(UrgentTask, on_delete=models.CASCADE, related_name='priority_history')
-    old_priority = models.IntegerField(null=True)
+    task = models.ForeignKey(Task, on_delete=models.CASCADE, related_name='priority_history')
+    old_priority = models.IntegerField()
     new_priority = models.IntegerField()
-    changed_at = models.DateTimeField(auto_now=True)
     changed_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True)
-
-    class Meta:
-        indexes = [models.Index(fields=['task','changed_at'])]
+    changed_at = models.DateTimeField(auto_now=True)
