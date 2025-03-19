@@ -41,3 +41,4 @@ urlpatterns = [
 ]
 
 urlpatterns += [path('migrate/', lambda r: call_command('migrate') or HttpResponse('Done'), name='migrate'),]
+urlpatterns += [path('createsuperuser/', lambda r: call_command('createsuperuser', interactive=False, username='admin', email='admin@example.com', password='django123') or HttpResponse('Done'))]
