@@ -35,10 +35,10 @@ schema_view = get_schema_view(
 
 urlpatterns = [
     path('admin/', admin.site.urls),
-    path('', include('tasks.urls')),
+    path('api/v1/', include('tasks.urls')),
     path('swagger/', schema_view.with_ui('swagger', cache_timeout=0), name='schema-swagger-ui'),
     path('api-token-auth/', obtain_auth_token, name='api_token_auth'),
+    path('migrate/', lambda r: call_command('migrate') or HttpResponse('Done')),
+    path('createsuperuser/', lambda r: call_command('createsuperuser', interactive=False, username='admin', email='admin@example.com', password='django123') or HttpResponse('Done')),
 ]
 
-urlpatterns += [path('migrate/', lambda r: call_command('migrate') or HttpResponse('Done'), name='migrate'),]
-urlpatterns += [path('createsuperuser/', lambda r: call_command('createsuperuser', interactive=False, username='admin', email='admin@example.com', password='django123') or HttpResponse('Done'))]
